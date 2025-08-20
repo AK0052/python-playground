@@ -1,54 +1,67 @@
+from __future__ import annotations
 import json
 import csv
 import sys
 from pathlib import Path
+from typing import List, Dict, Any
 
-try:
-
-    with open("config.json", "r") as f:
-        config = json.load(f)
-
-    print("loading config ...", config)
-
-    input_file = Path(config["input_file"])
-    if not input_file.exists:
-        raise FileNotFoundError(f"Input file not found: {input_file}")
-    rows = []
-
-    with input_file.open(newline="", encoding="utf-8") as f:
+def load_config(path: Path) -> Dict[str, Any]:
+    if not path.exists():
+        raise FileNotFoundError(f"Config not found: {path}")
+    with path.open("r", encoding="utf-8") as f:
+        return json.load(f)
+    
+def read_csv(path: Path) -> List[Dict[str, str]]:
+    if not path.exists():
+        raise FileNotFoundError(f"Input file not found: {path}")
+    rows: List[Dict[str, str]] = []
+    with path.open(newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
             rows.append(row)
+    return rows
 
-    print(f"Loaded {len(rows)} rows from {input_file}")
-    print("First row:", rows[0] if rows else None)
-
-    filtered_rows = []
-
+def filter_rows(
+        rows: List[Dict[str, str]],
+        columns: List[str],
+        min_age: int,
+) -> List[Dict[str, str]]:
+    filtered: List[Dict[str, str]] =[]
     for row in rows:
         try:
-            age = int(row["age"])
-        except ValueError:
+            age = int(row.get("age", "").strip())
+        except (ValueError, AttributeError):
+            # skip bad rows but continue processing
             print(f"Skipping row with invalid age: {row}")
             continue
 
-        if age >= config["min_age"]:
-            filtered_row = {col: row[col] for col in config["columns"]}
-            filtered_rows.append(filtered_row)
+        if age >= min_age:
+            filtered.append({col: row[col] for col in columns if col in row})
+    return filtered
 
-    print(f"Filtered down to {len(filtered_rows)} rows")
-    print("Example filtered row:", filtered_rows[0] if filtered_rows else None)
-
-    output_file = Path(config["output_file"])
-
-    with output_file.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=config["columns"])
+def write_csv(path: Path, rows: List[Dict[str, str]], columns: List[str, str]) -> None:
+    with path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=columns)
         writer.writeheader()
-        writer.writerows(filtered_rows)
+        writer.writerows(rows)
 
+def main() -> int:
+    try:
+        config = load_config(Path("config.json"))
+        input_file = Path(config["input_file"])
+        output_file = Path(config["output_file"])
+        columns = list(config["columns"])
+        min_age = int(config["min_age"])
 
-    print(f"Saved {len(filtered_rows)} rows to {output_file}")
+        rows = read_csv(input_file)
+        filtered = filter_rows(rows, columns, min_age)
+        write_csv(output_file, filtered, columns)
 
-except Exception as err:
-    print(f"Error: {err}")
-    sys.exit(1)
+        print(f"✅ Done: saved {len(filtered)} rows to {output_file}")
+        return 0
+    except Exception as err:
+        print(f"Error: {err}")
+        return 1
+    
+if __name__ == "__main__":
+    sys.exit(main())
