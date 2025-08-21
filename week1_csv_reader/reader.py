@@ -5,19 +5,39 @@ import sys
 from pathlib import Path
 from typing import List, Dict, Any
 
+TYPE_CASTERS = {
+    "int": int,
+    "float": float,
+    "str": str
+}
+
+def cast_row(row: Dict[str, str], schema: Dict[str, str]) -> Dict[str, Any]:
+    casted = {}
+    for key, value in row.items():
+        if key in schema:
+            caster = TYPE_CASTERS.get(schema[key])
+            try:
+                casted[key] = caster(value)
+            except (ValueError, TypeError):
+                casted[key] = None
+        else:
+            casted[key] = value
+    return casted
+
 def load_config(path: Path) -> Dict[str, Any]:
     if not path.exists():
         raise FileNotFoundError(f"Config not found: {path}")
     with path.open("r", encoding="utf-8") as f:
         return json.load(f)
     
-def read_csv(path: Path) -> List[Dict[str, str]]:
+def read_csv(path: Path, schema: Dict[str, str]) -> List[Dict[str, str]]:
     if not path.exists():
         raise FileNotFoundError(f"Input file not found: {path}")
     rows: List[Dict[str, str]] = []
     with path.open(newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
+            casted_row = cast_row(row, schema)
             rows.append(row)
     return rows
 
@@ -53,7 +73,8 @@ def main() -> int:
         columns = list(config["columns"])
         min_age = int(config["min_age"])
 
-        rows = read_csv(input_file)
+        schema = config.get("schema", {})
+        rows = read_csv(input_file, schema)
         filtered = filter_rows(rows, columns, min_age)
         write_csv(output_file, filtered, columns)
 
